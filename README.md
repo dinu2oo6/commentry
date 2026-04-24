@@ -1,244 +1,249 @@
 # CricComment AI
 
-AI-powered cricket commentary generation from uploaded match videos using computer vision, LLM-based commentary generation, text-to-speech, and final video composition.
+AI-powered cricket commentary generator. Upload a cricket match video and get back a fully-voiced commentary video — powered by computer vision, GPT-4o, and text-to-speech.
+
+```
+Upload video → Extract frames → Detect events → Generate commentary → Synthesize voice → Output video
+```
+
+---
+
+## How It Works
+
+| Step | What Happens |
+|------|-------------|
+| 1. Upload | You upload a cricket video through the web UI |
+| 2. Frame Extraction | OpenCV pulls frames at 2 fps (configurable) |
+| 3. Event Detection | YOLOv8 detects shots, boundaries, wickets |
+| 4. Commentary | GPT-4o writes professional ball-by-ball commentary |
+| 5. Voice | gTTS (or OpenAI TTS) converts text to speech |
+| 6. Compose | ffmpeg merges the original video with audio |
+
+---
 
 ## Project Structure
 
-```text
-cric/
+```
+commentry/
 ├── backend/
-│   ├── config.py
-│   ├── main.py
+│   ├── main.py                   # FastAPI app entry point
+│   ├── config.py                 # Env config & directory setup
 │   ├── requirements.txt
 │   ├── modules/
-│   │   ├── commentary_generator.py
-│   │   ├── context_engine.py
-│   │   ├── event_detector.py
-│   │   ├── shot_classifier.py
-│   │   ├── tts_engine.py
-│   │   ├── video_composer.py
-│   │   └── video_processor.py
-│   ├── routes/
-│   │   └── api.py
-│   └── venv/
+│   │   ├── video_processor.py    # Frame extraction via OpenCV
+│   │   ├── event_detector.py     # YOLOv8-based shot detection
+│   │   ├── shot_classifier.py    # Shot type classification
+│   │   ├── commentary_generator.py  # GPT-4o commentary prompts
+│   │   ├── context_engine.py     # Match context & history
+│   │   ├── tts_engine.py         # gTTS / OpenAI TTS
+│   │   └── video_composer.py     # ffmpeg video + audio merge
+│   └── routes/
+│       └── api.py                # All REST + WebSocket routes
 ├── frontend/
-│   ├── package.json
-│   ├── vite.config.js
 │   ├── src/
-│   └── public/
+│   │   ├── App.jsx
+│   │   ├── main.jsx
+│   │   └── components/
+│   ├── index.html
+│   ├── vite.config.js
+│   └── package.json
 ├── data/
-│   ├── frames/
-│   └── videos/
+│   ├── videos/                   # Uploaded videos (git-ignored)
+│   └── frames/                   # Extracted frames (git-ignored)
 ├── outputs/
-│   ├── audio/
-│   └── videos/
-└── run.sh
+│   ├── audio/                    # Generated audio (git-ignored)
+│   └── videos/                   # Final videos (git-ignored)
+└── run.sh                        # One-command startup script
 ```
 
-## Tech Stack
-
-### Backend
-- FastAPI
-- Uvicorn
-- OpenCV
-- PyTorch
-- Ultralytics
-- gTTS
-- OpenAI SDK
-- python-dotenv
-
-### Frontend
-- React
-- Vite
-
-### Media
-- ffmpeg
+---
 
 ## Prerequisites
 
-Install these before running the project:
+Make sure these are installed before running the project.
 
-- Python 3.10+
-- Node.js 18+
-- npm
-- ffmpeg
+| Tool | Version | Install |
+|------|---------|---------|
+| Python | 3.10+ | [python.org](https://www.python.org) |
+| Node.js | 18+ | [nodejs.org](https://nodejs.org) |
+| ffmpeg | any | see below |
 
 ### Install ffmpeg
 
-#### macOS
+**macOS (Homebrew):**
 ```bash
 brew install ffmpeg
 ```
 
-#### Ubuntu / Debian
+**Ubuntu / Debian:**
 ```bash
-sudo apt update
-sudo apt install -y ffmpeg
+sudo apt update && sudo apt install -y ffmpeg
 ```
 
-### Verify ffmpeg
+**Verify:**
 ```bash
 ffmpeg -version
-which ffmpeg
 ```
 
-## Backend Setup
+---
 
-Go to the backend directory:
+## Setup
+
+### 1. Clone the repo
 
 ```bash
-cd /Users/dineshsai/Documents/cric/backend
+git clone https://github.com/dinu2oo6/commentry.git
+cd commentry
 ```
 
-Create a virtual environment if needed:
+### 2. Backend setup
 
 ```bash
+cd backend
 python3 -m venv venv
-```
-
-Activate it:
-
-```bash
-source venv/bin/activate
-```
-
-Install backend dependencies:
-
-```bash
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-## Frontend Setup
-
-Go to the frontend directory:
+### 3. Frontend setup
 
 ```bash
-cd /Users/dineshsai/Documents/cric/frontend
-```
-
-Install frontend dependencies:
-
-```bash
+cd ../frontend
 npm install
 ```
 
-## Environment Variables
+### 4. Environment variables
 
-Create a file at `backend/.env`:
+Create `backend/.env`:
 
-```env
-OPENAI_API_KEY=
-EXTRACT_FPS=2
-MAX_FRAMES=60
-DEFAULT_STYLE=professional
-LLM_MODEL=gpt-4o
-TTS_PROVIDER=gtts
-TTS_VOICE=nova
+```bash
+cp backend/.env.example backend/.env   # if example exists, or create manually
 ```
 
-### Notes
-- `OPENAI_API_KEY` is optional if you use `gTTS`
-- Default TTS provider is `gtts`
-- Set `TTS_PROVIDER=openai` only if you have a valid OpenAI API key
+```env
+# backend/.env
 
-## Quick Start
+OPENAI_API_KEY=           # Optional — only needed for OpenAI TTS or GPT-4o
+EXTRACT_FPS=2             # Frames per second to extract
+MAX_FRAMES=60             # Max frames per video
+DEFAULT_STYLE=professional
+LLM_MODEL=gpt-4o
+TTS_PROVIDER=gtts         # "gtts" (free) or "openai" (needs key)
+TTS_VOICE=nova            # Only used when TTS_PROVIDER=openai
+```
+
+> **Note:** `OPENAI_API_KEY` is required for GPT-4o commentary generation. Without it the backend will error during processing. Set `TTS_PROVIDER=gtts` to use free TTS even when you have an OpenAI key.
+
+---
+
+## Running the App
+
+### One-command start (recommended)
 
 From the project root:
 
 ```bash
-cd /Users/dineshsai/Documents/cric
 chmod +x run.sh
 ./run.sh
 ```
 
-If executable permission is missing:
+This starts both servers simultaneously:
 
-```bash
-cd /Users/dineshsai/Documents/cric
-bash run.sh
+```
+Frontend  →  http://localhost:5173
+Backend   →  http://localhost:8000
+API Docs  →  http://localhost:8000/docs
 ```
 
-This starts:
-- Backend: `http://localhost:8000`
-- Frontend: `http://localhost:5173`
+Press `Ctrl+C` to stop both.
 
-## Manual Run Commands
+---
 
-### Start Backend
+### Manual start (two terminals)
 
-Open Terminal 1:
-
+**Terminal 1 — Backend:**
 ```bash
-cd /Users/dineshsai/Documents/cric/backend
+cd backend
 source venv/bin/activate
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Start Frontend
-
-Open Terminal 2:
-
+**Terminal 2 — Frontend:**
 ```bash
-cd /Users/dineshsai/Documents/cric/frontend
+cd frontend
 npm run dev
 ```
 
-## Application URLs
+---
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:8000`
-- API Docs: `http://localhost:8000/docs`
+## All Commands Reference
 
-## Frontend Commands
+### Backend
 
-From `frontend/`:
-
-### Start development server
 ```bash
-npm run dev
+# Create virtual environment
+python3 -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate           # macOS / Linux
+venv\Scripts\activate              # Windows
+
+# Install dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# Run development server
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# Run without auto-reload (production-like)
+uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-### Build production bundle
+### Frontend
+
 ```bash
+# Install dependencies
+npm install
+
+# Start development server (http://localhost:5173)
+npm run dev
+
+# Build for production
 npm run build
-```
 
-### Preview production build
-```bash
+# Preview production build locally
 npm run preview
 ```
 
-## Backend Commands
+### Utility
 
-From `backend/`:
-
-### Install dependencies
 ```bash
-source venv/bin/activate
-pip install -r requirements.txt
+# Health check
+curl http://localhost:8000/api/health
+
+# Kill process on a port (if port already in use)
+lsof -i :8000        # find PID
+kill -9 <PID>
+
+# Clean generated outputs
+rm -rf data/frames/*
+rm -rf outputs/audio/*
+rm -rf outputs/videos/*
 ```
 
-### Run development server
-```bash
-source venv/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
+---
 
-## API Endpoints
+## API Reference
 
-Base URL:
+Base URL: `http://localhost:8000/api`
 
-```text
-http://localhost:8000/api
-```
+Interactive docs: `http://localhost:8000/docs`
 
 ### Health Check
 ```http
 GET /api/health
 ```
-
-Example:
 ```bash
 curl http://localhost:8000/api/health
 ```
@@ -246,23 +251,22 @@ curl http://localhost:8000/api/health
 ### Upload Video
 ```http
 POST /api/upload-video
+Content-Type: multipart/form-data
 ```
-
-Example:
 ```bash
 curl -X POST http://localhost:8000/api/upload-video \
-  -F "file=@/absolute/path/to/video.mp4"
+  -F "file=@/path/to/match.mp4"
+# Returns: { "job_id": "abc123..." }
 ```
 
 ### Start Processing
 ```http
 POST /api/process-video
+Content-Type: multipart/form-data
 ```
-
-Example:
 ```bash
 curl -X POST http://localhost:8000/api/process-video \
-  -F "job_id=YOUR_JOB_ID" \
+  -F "job_id=abc123" \
   -F "style=professional" \
   -F "batsman=Virat Kohli" \
   -F "bowler=Jasprit Bumrah"
@@ -272,220 +276,102 @@ curl -X POST http://localhost:8000/api/process-video \
 ```http
 GET /api/results/{job_id}
 ```
-
-Example:
 ```bash
-curl http://localhost:8000/api/results/YOUR_JOB_ID
+curl http://localhost:8000/api/results/abc123
 ```
 
-### Get Generated Audio
+### Download Audio
 ```http
 GET /api/audio/{filename}
 ```
-
-Example:
 ```bash
-curl -O http://localhost:8000/api/audio/YOUR_AUDIO_FILE.mp3
+curl -O http://localhost:8000/api/audio/abc123_full.mp3
 ```
 
-### Get Final Video
+### Download Final Video
 ```http
 GET /api/video/{filename}
 ```
-
-Example:
 ```bash
-curl -O http://localhost:8000/api/video/YOUR_VIDEO_FILE.mp4
+curl -O http://localhost:8000/api/video/abc123_commentary.mp4
 ```
+
+### Real-time Progress (WebSocket)
+```
+WS /api/stream/{job_id}
+```
+Connect to receive live status updates while the video processes.
+
+---
 
 ## Typical Workflow
 
-1. Start backend and frontend
-2. Open the frontend in your browser
-3. Upload a cricket video
-4. Start processing
-5. Wait for:
-   - frame extraction
-   - event detection
-   - commentary generation
-   - audio generation
-   - final video composition
-6. Play or download the final output
+1. Open `http://localhost:5173` in your browser
+2. Upload a cricket video clip
+3. Enter player names (optional) and choose commentary style
+4. Click **Process**
+5. Watch the real-time progress bar
+6. Download or play the final commentary video
 
-## Generated Files
-
-### Uploaded videos
-Stored in:
-
-```text
-data/videos/
-```
-
-### Extracted frames
-Stored in:
-
-```text
-data/frames/
-```
-
-### Generated commentary audio
-Stored in:
-
-```text
-outputs/audio/
-```
-
-### Final composed videos
-Stored in:
-
-```text
-outputs/videos/
-```
+---
 
 ## Troubleshooting
 
-### 1. Final video is not generated
-
-Check whether `ffmpeg` is installed:
-
+### Final video is missing
+ffmpeg is required for video composition. Install it, then restart the app.
 ```bash
-ffmpeg -version
-which ffmpeg
+brew install ffmpeg        # macOS
+sudo apt install ffmpeg    # Ubuntu
 ```
 
-Restart the app after installing `ffmpeg`:
-
+### Backend won't start
 ```bash
-cd /Users/dineshsai/Documents/cric
-./run.sh
-```
-
-Check generated output folders:
-
-```bash
-ls -la /Users/dineshsai/Documents/cric/outputs/audio
-ls -la /Users/dineshsai/Documents/cric/outputs/videos
-```
-
-If audio files exist but no final video exists, stop the app, restart it, and process the video again.
-
-### 2. Backend does not start
-
-Run:
-
-```bash
-cd /Users/dineshsai/Documents/cric/backend
+cd backend
 source venv/bin/activate
+pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-If dependencies are missing:
-
+### Frontend won't start
 ```bash
-pip install -r requirements.txt
-```
-
-### 3. Frontend does not start
-
-Run:
-
-```bash
-cd /Users/dineshsai/Documents/cric/frontend
+cd frontend
 npm install
 npm run dev
 ```
 
-### 4. OpenAI TTS is not working
+### Port already in use
+```bash
+lsof -i :8000    # or :5173
+kill -9 <PID>
+```
 
-Make sure `backend/.env` contains:
-
+### OpenAI TTS not working
+Ensure `backend/.env` has:
 ```env
-OPENAI_API_KEY=your_key_here
+OPENAI_API_KEY=sk-...
 TTS_PROVIDER=openai
 TTS_VOICE=nova
 ```
 
-If the key is missing or invalid, the app can fall back to `gTTS`.
+### Commentary generation fails
+`GPT-4o` requires a valid `OPENAI_API_KEY`. Check the key is set and has credits.
 
-### 5. Port already in use
+---
 
-Check which process is using the ports:
+## Tech Stack
 
-```bash
-lsof -i :8000
-lsof -i :5173
-```
+| Layer | Technology |
+|-------|-----------|
+| Backend API | FastAPI + Uvicorn |
+| Computer Vision | OpenCV + YOLOv8 (Ultralytics) |
+| AI Commentary | OpenAI GPT-4o |
+| Text-to-Speech | gTTS (free) / OpenAI TTS |
+| Video Composition | ffmpeg |
+| Frontend | React 18 + Vite |
+| Deep Learning | PyTorch + TorchVision |
 
-Kill the process if needed:
-
-```bash
-kill -9 PID
-```
-
-Replace `PID` with the actual process ID.
-
-### 6. Clean generated files
-
-Remove generated outputs:
-
-```bash
-rm -rf /Users/dineshsai/Documents/cric/data/frames/*
-rm -rf /Users/dineshsai/Documents/cric/outputs/audio/*
-rm -rf /Users/dineshsai/Documents/cric/outputs/videos/*
-```
-
-## Useful Command Summary
-
-### Run full app
-```bash
-cd /Users/dineshsai/Documents/cric
-./run.sh
-```
-
-### Run backend
-```bash
-cd /Users/dineshsai/Documents/cric/backend
-source venv/bin/activate
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-### Run frontend
-```bash
-cd /Users/dineshsai/Documents/cric/frontend
-npm run dev
-```
-
-### Install backend deps
-```bash
-cd /Users/dineshsai/Documents/cric/backend
-source venv/bin/activate
-pip install -r requirements.txt
-```
-
-### Install frontend deps
-```bash
-cd /Users/dineshsai/Documents/cric/frontend
-npm install
-```
-
-### Build frontend
-```bash
-cd /Users/dineshsai/Documents/cric/frontend
-npm run build
-```
-
-### Check API health
-```bash
-curl http://localhost:8000/api/health
-```
-
-## Notes
-
-- Job state is currently stored in memory
-- Restarting the backend clears in-memory job tracking
-- Generated files remain on disk inside `data/` and `outputs/`
-- If you change environment variables or install ffmpeg after startup, restart the app
+---
 
 ## License
 
-Add your preferred license here.
+MIT License — see [LICENSE](LICENSE) for details.
