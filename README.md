@@ -1,6 +1,6 @@
 # CricComment AI
 
-AI-powered cricket commentary generator. Upload a cricket match video and get back a fully-voiced commentary video — powered by computer vision, GPT-4o, and text-to-speech.
+AI-powered cricket commentary generator. Upload a cricket match video and get back a fully-voiced commentary video — powered by computer vision, Ollama (local LLM), and text-to-speech.
 
 ```
 Upload video → Extract frames → Detect events → Generate commentary → Synthesize voice → Output video
@@ -15,9 +15,10 @@ Upload video → Extract frames → Detect events → Generate commentary → Sy
 | 1. Upload | You upload a cricket video through the web UI |
 | 2. Frame Extraction | OpenCV pulls frames at 2 fps (configurable) |
 | 3. Event Detection | YOLOv8 detects shots, boundaries, wickets |
-| 4. Commentary | GPT-4o writes professional ball-by-ball commentary |
-| 5. Voice | gTTS (or OpenAI TTS) converts text to speech |
-| 6. Compose | ffmpeg merges the original video with audio |
+| 4. Commentary | Ollama (`gemma:7b`) writes professional ball-by-ball commentary |
+| 5. Vision | Ollama (`llava:latest`) analyzes frames for visual context |
+| 6. Voice | gTTS converts text to speech |
+| 7. Compose | ffmpeg merges the original video with audio |
 
 ---
 
@@ -33,7 +34,7 @@ commentry/
 │   │   ├── video_processor.py    # Frame extraction via OpenCV
 │   │   ├── event_detector.py     # YOLOv8-based shot detection
 │   │   ├── shot_classifier.py    # Shot type classification
-│   │   ├── commentary_generator.py  # GPT-4o commentary prompts
+│   │   ├── commentary_generator.py  # Ollama commentary prompts
 │   │   ├── context_engine.py     # Match context & history
 │   │   ├── tts_engine.py         # gTTS / OpenAI TTS
 │   │   └── video_composer.py     # ffmpeg video + audio merge
@@ -67,6 +68,7 @@ Make sure these are installed before running the project.
 | Python | 3.10+ | [python.org](https://www.python.org) |
 | Node.js | 18+ | [nodejs.org](https://nodejs.org) |
 | ffmpeg | any | see below |
+| Ollama | latest | [ollama.com](https://ollama.com) |
 
 ### Install ffmpeg
 
@@ -84,6 +86,40 @@ sudo apt update && sudo apt install -y ffmpeg
 ```bash
 ffmpeg -version
 ```
+
+### Install Ollama
+
+**macOS / Linux:**
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+**macOS (Homebrew):**
+```bash
+brew install ollama
+```
+
+**Verify:**
+```bash
+ollama --version
+```
+
+### Pull required Ollama models
+
+```bash
+# Text commentary model
+ollama pull gemma:7b
+
+# Vision model (for frame analysis)
+ollama pull llava:latest
+```
+
+**Start the Ollama server** (runs in the background):
+```bash
+ollama serve
+```
+
+Ollama listens on `http://localhost:11434` by default.
 
 ---
 
@@ -124,20 +160,32 @@ cp backend/.env.example backend/.env   # if example exists, or create manually
 ```env
 # backend/.env
 
-OPENAI_API_KEY=           # Optional — only needed for OpenAI TTS or GPT-4o
 EXTRACT_FPS=2             # Frames per second to extract
 MAX_FRAMES=60             # Max frames per video
 DEFAULT_STYLE=professional
-LLM_MODEL=gpt-4o
-TTS_PROVIDER=gtts         # "gtts" (free) or "openai" (needs key)
+
+# Ollama settings (local LLM — no API key needed)
+LLM_PROVIDER=ollama
+LLM_MODEL=gemma:7b
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_VISION_MODEL=llava:latest
+
+# Text-to-Speech
+TTS_PROVIDER=gtts         # "gtts" (free) or "openai" (needs OPENAI_API_KEY)
 TTS_VOICE=nova            # Only used when TTS_PROVIDER=openai
 ```
 
-> **Note:** `OPENAI_API_KEY` is required for GPT-4o commentary generation. Without it the backend will error during processing. Set `TTS_PROVIDER=gtts` to use free TTS even when you have an OpenAI key.
+> **Note:** No API keys are required when using Ollama. Just make sure `ollama serve` is running and the models are pulled before starting the backend.
 
 ---
 
 ## Running the App
+
+### 0. Start Ollama (required first)
+
+```bash
+ollama serve
+```
 
 ### One-command start (recommended)
 
@@ -154,6 +202,7 @@ This starts both servers simultaneously:
 Frontend  →  http://localhost:5173
 Backend   →  http://localhost:8000
 API Docs  →  http://localhost:8000/docs
+Ollama    →  http://localhost:11434
 ```
 
 Press `Ctrl+C` to stop both.
@@ -178,6 +227,38 @@ npm run dev
 ---
 
 ## All Commands Reference
+
+### Ollama
+
+```bash
+# Install Ollama (macOS/Linux)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Start Ollama server
+ollama serve
+
+# Pull the text model
+ollama pull gemma:7b
+
+# Pull the vision model
+ollama pull llava:latest
+
+# List downloaded models
+ollama list
+
+# Remove a model
+ollama rm gemma:7b
+
+# Run a model interactively (test it)
+ollama run gemma:7b
+
+# Check Ollama API health
+curl http://localhost:11434/api/tags
+
+# Generate text via Ollama API directly
+curl http://localhost:11434/api/generate \
+  -d '{"model": "gemma:7b", "prompt": "Hello, world!", "stream": false}'
+```
 
 ### Backend
 
@@ -306,16 +387,41 @@ Connect to receive live status updates while the video processes.
 
 ## Typical Workflow
 
-1. Open `http://localhost:5173` in your browser
-2. Upload a cricket video clip
-3. Enter player names (optional) and choose commentary style
-4. Click **Process**
-5. Watch the real-time progress bar
-6. Download or play the final commentary video
+1. Start Ollama: `ollama serve`
+2. Open `http://localhost:5173` in your browser
+3. Upload a cricket video clip
+4. Enter player names (optional) and choose commentary style
+5. Click **Process**
+6. Watch the real-time progress bar
+7. Download or play the final commentary video
 
 ---
 
 ## Troubleshooting
+
+### Commentary generation fails
+Make sure Ollama is running and the models are downloaded:
+```bash
+ollama serve
+ollama pull gemma:7b
+ollama pull llava:latest
+
+# Verify Ollama is reachable
+curl http://localhost:11434/api/tags
+```
+
+### Ollama connection refused
+If you see `Connection refused` on port `11434`, start the Ollama server:
+```bash
+ollama serve
+```
+
+### Model not found error
+Pull the missing model:
+```bash
+ollama pull gemma:7b
+ollama pull llava:latest
+```
 
 ### Final video is missing
 ffmpeg is required for video composition. Install it, then restart the app.
@@ -345,17 +451,6 @@ lsof -i :8000    # or :5173
 kill -9 <PID>
 ```
 
-### OpenAI TTS not working
-Ensure `backend/.env` has:
-```env
-OPENAI_API_KEY=sk-...
-TTS_PROVIDER=openai
-TTS_VOICE=nova
-```
-
-### Commentary generation fails
-`GPT-4o` requires a valid `OPENAI_API_KEY`. Check the key is set and has credits.
-
 ---
 
 ## Tech Stack
@@ -364,8 +459,9 @@ TTS_VOICE=nova
 |-------|-----------|
 | Backend API | FastAPI + Uvicorn |
 | Computer Vision | OpenCV + YOLOv8 (Ultralytics) |
-| AI Commentary | OpenAI GPT-4o |
-| Text-to-Speech | gTTS (free) / OpenAI TTS |
+| AI Commentary | Ollama (`gemma:7b`) |
+| Vision Analysis | Ollama (`llava:latest`) |
+| Text-to-Speech | gTTS (free) |
 | Video Composition | ffmpeg |
 | Frontend | React 18 + Vite |
 | Deep Learning | PyTorch + TorchVision |

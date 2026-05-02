@@ -27,7 +27,10 @@ MAX_FRAMES: int = int(os.getenv("MAX_FRAMES", "60"))
 
 # ── Commentary ────────────────────────────────────────────────────────
 DEFAULT_STYLE: str = os.getenv("DEFAULT_STYLE", "professional")
-LLM_MODEL: str = os.getenv("LLM_MODEL", "gpt-4o")
+LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" or "openai"
+LLM_MODEL: str = os.getenv("LLM_MODEL", "gemma:7b")
+OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_VISION_MODEL: str = os.getenv("OLLAMA_VISION_MODEL", "llava:latest")
 TTS_PROVIDER: str = os.getenv("TTS_PROVIDER", "gtts")  # "gtts" or "openai"
 TTS_VOICE: str = os.getenv("TTS_VOICE", "nova")
 

@@ -9,7 +9,16 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
-from config import OPENAI_API_KEY, LLM_MODEL, DEFAULT_STYLE
+try:
+    import ollama as ollama_client
+    OLLAMA_AVAILABLE = True
+except ImportError:
+    OLLAMA_AVAILABLE = False
+
+from config import (
+    OPENAI_API_KEY, LLM_MODEL, DEFAULT_STYLE,
+    LLM_PROVIDER, OLLAMA_BASE_URL, OLLAMA_VISION_MODEL,
+)
 
 
 # ── Style Prompts ─────────────────────────────────────────────────────
@@ -104,12 +113,19 @@ class CommentaryGenerator:
 
     def __init__(self, style: str = DEFAULT_STYLE):
         self.style = style if style in STYLE_PROMPTS else DEFAULT_STYLE
+        self.provider = LLM_PROVIDER
         self.client = None
-        if OPENAI_AVAILABLE and OPENAI_API_KEY:
+
+        if self.provider == "ollama" and OLLAMA_AVAILABLE:
+            self._ollama = ollama_client.Client(host=OLLAMA_BASE_URL)
+        elif OPENAI_AVAILABLE and OPENAI_API_KEY:
             try:
                 self.client = openai.OpenAI(api_key=OPENAI_API_KEY)
             except Exception:
                 pass
+            self._ollama = None
+        else:
+            self._ollama = None
 
     def set_style(self, style: str):
         """Change commentary style."""
@@ -118,35 +134,50 @@ class CommentaryGenerator:
 
     def generate_from_event(self, event: dict, context: dict) -> str:
         """Generate commentary for a single event with context."""
+        if self._ollama:
+            return self._ollama_commentary(event, context)
         if self.client:
             return self._llm_commentary(event, context)
         return self._template_commentary(event, context)
 
     def generate_from_frames(self, frames_b64: List[str], duration: float,
                               context: Optional[dict] = None) -> str:
-        """Generate commentary from video frames using GPT Vision."""
+        """Generate commentary from video frames using a vision model."""
+        prompt = (
+            f"These are frames from a cricket match. "
+            f"Create exciting cricket commentary in the style described. "
+            f"Keep it to about {int(duration)} seconds of spoken commentary. "
+            f"Use the scoreboard text visible in frames if any. "
+            f"Match context: {context or 'No additional context'}"
+        )
+
+        if self._ollama:
+            try:
+                import base64
+                images = []
+                for b64 in frames_b64[:6]:  # llava handles fewer frames well
+                    images.append(b64)
+                response = self._ollama.chat(
+                    model=OLLAMA_VISION_MODEL,
+                    messages=[
+                        {"role": "system", "content": STYLE_PROMPTS[self.style]},
+                        {"role": "user", "content": prompt, "images": images},
+                    ],
+                )
+                return response["message"]["content"].strip()
+            except Exception as e:
+                return f"Exciting action on the cricket field! {str(e)[:50]}"
+
         if not self.client:
             return "What a delivery! The action continues on this exciting cricket pitch."
 
         try:
-            content = [
-                {
-                    "type": "text",
-                    "text": (
-                        f"These are frames from a cricket match. "
-                        f"Create exciting cricket commentary in the style described. "
-                        f"Keep it to about {int(duration)} seconds of spoken commentary. "
-                        f"Use the scoreboard text visible in frames if any. "
-                        f"Match context: {context or 'No additional context'}"
-                    ),
-                }
-            ]
-            for b64 in frames_b64[:20]:  # Limit to 20 frames
+            content = [{"type": "text", "text": prompt}]
+            for b64 in frames_b64[:20]:
                 content.append({
                     "type": "image_url",
                     "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "low"},
                 })
-
             response = self.client.chat.completions.create(
                 model=LLM_MODEL,
                 messages=[
@@ -174,8 +205,33 @@ class CommentaryGenerator:
             })
         return results
 
+    def _ollama_commentary(self, event: dict, context: dict) -> str:
+        """Generate commentary using local Ollama model."""
+        try:
+            prompt = (
+                f"Generate 1-2 lines of cricket commentary for this event:\n"
+                f"Event: {event.get('event', 'DOT')}\n"
+                f"Shot: {event.get('shot', 'defensive')}\n"
+                f"Score: {event.get('score', '0/0')}\n"
+                f"Overs: {event.get('overs', '0.0')}\n"
+                f"Context: {', '.join(context.get('context_phrases', []))}\n"
+                f"Recent events: {context.get('recent_events', [])}\n\n"
+                f"Be natural, avoid repetition. Reply with commentary only, no preamble."
+            )
+            response = self._ollama.chat(
+                model=LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": STYLE_PROMPTS[self.style]},
+                    {"role": "user", "content": prompt},
+                ],
+                options={"temperature": 0.8, "num_predict": 100},
+            )
+            return response["message"]["content"].strip()
+        except Exception:
+            return self._template_commentary(event, context)
+
     def _llm_commentary(self, event: dict, context: dict) -> str:
-        """Generate commentary using LLM."""
+        """Generate commentary using OpenAI."""
         try:
             prompt = (
                 f"Generate 1-2 lines of cricket commentary for this event:\n"
