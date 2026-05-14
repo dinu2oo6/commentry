@@ -4,10 +4,10 @@ import random
 from typing import Optional
 
 try:
+    import cv2
     import torch
     import torch.nn as nn
     from torchvision import models, transforms
-    from PIL import Image
     TORCH_AVAILABLE = True
 except ImportError:
     TORCH_AVAILABLE = False
@@ -62,7 +62,8 @@ class ShotClassifier:
             return self._mock_classify()
 
         try:
-            image = Image.open(frame_path).convert("RGB")
+            image = cv2.imread(frame_path)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             tensor = self.transform(image).unsqueeze(0)
 
             with torch.no_grad():

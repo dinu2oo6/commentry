@@ -118,8 +118,9 @@ async def _run_pipeline(job_id: str, style: str, batsman: str, bowler: str):
         )
         job["progress"] = 70
 
-        # 4. TTS
+        # 4. TTS — propagate style so neural voice matches commentary tone
         job["step"] = "generating_audio"
+        tts_engine.set_style(style)
         tts_result = await loop.run_in_executor(
             None, tts_engine.synthesize_full, commentary_items, job_id
         )

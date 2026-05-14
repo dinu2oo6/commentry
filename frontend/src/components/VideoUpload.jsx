@@ -29,16 +29,29 @@ export default function VideoUpload({ file, onFileSelect }) {
       onDrop={handleDrop}
       onClick={() => inputRef.current?.click()}
     >
-      <input ref={inputRef} type="file" accept="video/*" style={{ display: 'none' }} onChange={handleChange} />
-      <span className="upload-zone__icon">🎬</span>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="video/*"
+        style={{ display: 'none' }}
+        onChange={handleChange}
+      />
+
+      <div className="upload-zone__icon-wrap">
+        <div className="upload-zone__icon-ring" />
+        <span className="upload-zone__icon">🎬</span>
+      </div>
+
       {!file ? (
         <>
-          <div className="upload-zone__text">Drop your cricket video here or click to browse</div>
-          <div className="upload-zone__hint">Supports MP4, AVI, MOV • Max 500MB</div>
+          <div className="upload-zone__text">Drop your cricket video here</div>
+          <div className="upload-zone__hint">or click to browse · MP4, AVI, MOV · Max 500 MB</div>
         </>
       ) : (
         <div className="upload-zone__file">
-          🎥 {file.name} ({formatSize(file.size)})
+          <span>🎥</span>
+          <span>{file.name}</span>
+          <span style={{ opacity: 0.6 }}>({formatSize(file.size)})</span>
         </div>
       )}
     </div>

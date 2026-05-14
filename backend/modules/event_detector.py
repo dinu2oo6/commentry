@@ -85,6 +85,18 @@ class EventDetector:
             event["timestamp"] = mid.get("timestamp", 0)
             event["frame_index"] = mid.get("index", i)
             event["detections"] = detections
+
+            # Store base64 frames so the vision LLM can see what's actually happening
+            event["frames_b64"] = [f["base64"] for f in window if f.get("base64")]
+            if len(window) >= 2:
+                event["segment_duration"] = round(
+                    window[-1]["timestamp"] - window[0]["timestamp"], 2
+                )
+            else:
+                event["segment_duration"] = round(
+                    duration / max(1, len(frames) // window_size), 2
+                )
+
             events.append(event)
 
         return events

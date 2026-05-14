@@ -20,6 +20,7 @@ for d in [VIDEO_DIR, FRAME_DIR, AUDIO_DIR, MODEL_DIR]:
 
 # ── API Keys ───────────────────────────────────────────────────────────
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 
 # ── Video Processing ──────────────────────────────────────────────────
 EXTRACT_FPS: int = int(os.getenv("EXTRACT_FPS", "2"))
@@ -27,10 +28,9 @@ MAX_FRAMES: int = int(os.getenv("MAX_FRAMES", "60"))
 
 # ── Commentary ────────────────────────────────────────────────────────
 DEFAULT_STYLE: str = os.getenv("DEFAULT_STYLE", "professional")
-LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" or "openai"
-LLM_MODEL: str = os.getenv("LLM_MODEL", "gemma:7b")
-OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_VISION_MODEL: str = os.getenv("OLLAMA_VISION_MODEL", "llava:latest")
+LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "groq")  # "groq" or "openai"
+LLM_MODEL: str = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+GROQ_VISION_MODEL: str = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
 TTS_PROVIDER: str = os.getenv("TTS_PROVIDER", "gtts")  # "gtts" or "openai"
 TTS_VOICE: str = os.getenv("TTS_VOICE", "nova")
 

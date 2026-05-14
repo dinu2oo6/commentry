@@ -4,20 +4,20 @@ import random
 from typing import List, Optional
 
 try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+
+try:
     import openai
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
 
-try:
-    import ollama as ollama_client
-    OLLAMA_AVAILABLE = True
-except ImportError:
-    OLLAMA_AVAILABLE = False
-
 from config import (
-    OPENAI_API_KEY, LLM_MODEL, DEFAULT_STYLE,
-    LLM_PROVIDER, OLLAMA_BASE_URL, OLLAMA_VISION_MODEL,
+    OPENAI_API_KEY, GROQ_API_KEY, LLM_MODEL, DEFAULT_STYLE,
+    LLM_PROVIDER, GROQ_VISION_MODEL,
 )
 
 
@@ -116,16 +116,18 @@ class CommentaryGenerator:
         self.provider = LLM_PROVIDER
         self.client = None
 
-        if self.provider == "ollama" and OLLAMA_AVAILABLE:
-            self._ollama = ollama_client.Client(host=OLLAMA_BASE_URL)
+        if self.provider == "groq" and GROQ_AVAILABLE and GROQ_API_KEY:
+            try:
+                self.client = Groq(api_key=GROQ_API_KEY)
+                self.provider = "groq"
+            except Exception:
+                self.client = None
         elif OPENAI_AVAILABLE and OPENAI_API_KEY:
             try:
                 self.client = openai.OpenAI(api_key=OPENAI_API_KEY)
+                self.provider = "openai"
             except Exception:
-                pass
-            self._ollama = None
-        else:
-            self._ollama = None
+                self.client = None
 
     def set_style(self, style: str):
         """Change commentary style."""
@@ -134,8 +136,6 @@ class CommentaryGenerator:
 
     def generate_from_event(self, event: dict, context: dict) -> str:
         """Generate commentary for a single event with context."""
-        if self._ollama:
-            return self._ollama_commentary(event, context)
         if self.client:
             return self._llm_commentary(event, context)
         return self._template_commentary(event, context)
@@ -143,53 +143,48 @@ class CommentaryGenerator:
     def generate_from_frames(self, frames_b64: List[str], duration: float,
                               context: Optional[dict] = None) -> str:
         """Generate commentary from video frames using a vision model."""
-        prompt = (
-            f"These are frames from a cricket match. "
-            f"Create exciting cricket commentary in the style described. "
-            f"Keep it to about {int(duration)} seconds of spoken commentary. "
-            f"Use the scoreboard text visible in frames if any. "
-            f"Match context: {context or 'No additional context'}"
-        )
-
-        if self._ollama:
-            try:
-                import base64
-                images = []
-                for b64 in frames_b64[:6]:  # llava handles fewer frames well
-                    images.append(b64)
-                response = self._ollama.chat(
-                    model=OLLAMA_VISION_MODEL,
-                    messages=[
-                        {"role": "system", "content": STYLE_PROMPTS[self.style]},
-                        {"role": "user", "content": prompt, "images": images},
-                    ],
-                )
-                return response["message"]["content"].strip()
-            except Exception as e:
-                return f"Exciting action on the cricket field! {str(e)[:50]}"
-
         if not self.client:
             return "What a delivery! The action continues on this exciting cricket pitch."
 
+        ctx_str = ""
+        if context:
+            score = context.get("score", "")
+            overs = context.get("overs", "")
+            if score:
+                ctx_str += f" Current score: {score}."
+            if overs:
+                ctx_str += f" Overs: {overs}."
+
+        prompt = (
+            f"You are watching a cricket match. These frames capture a {int(duration)}-second segment. "
+            f"Look carefully at: the batsman's shot and footwork, the ball's trajectory, "
+            f"fielders' positions and reactions, any celebration or dismissal, scoreboard if visible. "
+            f"Describe EXACTLY what you see happening — be specific about the shot played, "
+            f"where the ball went, and the result (boundary, wicket, dot ball, run, etc.). "
+            f"Generate {max(1, int(duration))} seconds worth of natural spoken cricket commentary.{ctx_str} "
+            f"Reply with commentary only — no labels, no preamble, no symbols like '/'."
+        )
+
         try:
+            vision_model = GROQ_VISION_MODEL if self.provider == "groq" else LLM_MODEL
             content = [{"type": "text", "text": prompt}]
-            for b64 in frames_b64[:20]:
+            for b64 in frames_b64[:4]:  # 4 frames gives good coverage without hitting limits
                 content.append({
                     "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "low"},
+                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
                 })
             response = self.client.chat.completions.create(
-                model=LLM_MODEL,
+                model=vision_model,
                 messages=[
                     {"role": "system", "content": STYLE_PROMPTS[self.style]},
                     {"role": "user", "content": content},
                 ],
-                max_tokens=300,
+                max_tokens=200,
                 temperature=0.7,
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
-            return f"Exciting action on the cricket field! {str(e)[:50]}"
+            return self._template_commentary({"event": "DOT"}, context or {})
 
     def generate_batch(self, events: List[dict], context_engine) -> List[dict]:
         """Generate commentary for a batch of events."""
@@ -197,54 +192,42 @@ class CommentaryGenerator:
         for event in events:
             enriched = context_engine.update(event)
             match_summary = context_engine.get_match_summary()
-            commentary = self.generate_from_event(enriched, match_summary)
+
+            frames_b64 = enriched.get("frames_b64", [])
+            if frames_b64 and self.client:
+                # Vision model looks at actual frames — commentary reflects what's really happening
+                duration = enriched.get("segment_duration", 3.0)
+                commentary = self.generate_from_frames(frames_b64, duration, match_summary)
+            else:
+                commentary = self.generate_from_event(enriched, match_summary)
+
+            # Drop frames_b64 from the result to keep the payload lean
+            result = {k: v for k, v in enriched.items() if k != "frames_b64"}
             results.append({
-                **enriched,
+                **result,
                 "commentary": commentary,
                 "style": self.style,
             })
         return results
 
-    def _ollama_commentary(self, event: dict, context: dict) -> str:
-        """Generate commentary using local Ollama model."""
-        try:
-            prompt = (
-                f"Generate 1-2 lines of cricket commentary for this event:\n"
-                f"Event: {event.get('event', 'DOT')}\n"
-                f"Shot: {event.get('shot', 'defensive')}\n"
-                f"Score: {event.get('score', '0/0')}\n"
-                f"Overs: {event.get('overs', '0.0')}\n"
-                f"Context: {', '.join(context.get('context_phrases', []))}\n"
-                f"Recent events: {context.get('recent_events', [])}\n\n"
-                f"Be natural, avoid repetition. Reply with commentary only, no preamble."
-            )
-            response = self._ollama.chat(
-                model=LLM_MODEL,
-                messages=[
-                    {"role": "system", "content": STYLE_PROMPTS[self.style]},
-                    {"role": "user", "content": prompt},
-                ],
-                options={"temperature": 0.8, "num_predict": 100},
-            )
-            return response["message"]["content"].strip()
-        except Exception:
-            return self._template_commentary(event, context)
-
     def _llm_commentary(self, event: dict, context: dict) -> str:
-        """Generate commentary using OpenAI."""
+        """Generate commentary using Groq or OpenAI (same SDK interface)."""
         try:
+            score_raw = event.get('score', '0/0')
+            score_spoken = score_raw.replace('/', ' for ') if '/' in str(score_raw) else score_raw
             prompt = (
-                f"Generate 1-2 lines of cricket commentary for this event:\n"
-                f"Event: {event.get('event', 'DOT')}\n"
-                f"Shot: {event.get('shot', 'defensive')}\n"
-                f"Score: {event.get('score', '0/0')}\n"
+                f"Generate 1-2 sentences of natural cricket commentary for this event. "
+                f"Write for text-to-speech — no symbols like '/', use words like 'for' for wickets. "
+                f"Be vivid, varied, avoid repetition.\n\n"
+                f"Event type: {event.get('event', 'DOT')}\n"
+                f"Shot played: {event.get('shot', 'defensive').replace('_', ' ')}\n"
+                f"Score: {score_spoken}\n"
                 f"Overs: {event.get('overs', '0.0')}\n"
-                f"Context: {', '.join(context.get('context_phrases', []))}\n"
-                f"Recent events: {context.get('recent_events', [])}\n\n"
-                f"Be natural, avoid repetition from recent commentary."
+                f"Match context: {', '.join(context.get('context_phrases', [])) or 'early in the innings'}\n\n"
+                f"Reply with the commentary only. No preamble, no labels."
             )
             response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=LLM_MODEL,
                 messages=[
                     {"role": "system", "content": STYLE_PROMPTS[self.style]},
                     {"role": "user", "content": prompt},
