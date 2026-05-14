@@ -22,10 +22,8 @@ frontend/dist/
 frontend/.vite/
 
 # Generated data (not source code)
-data/videos/
-data/frames/
-outputs/audio/
-outputs/videos/
+data/
+outputs/
 
 # macOS
 .DS_Store
